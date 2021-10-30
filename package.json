@@ -1,0 +1,21 @@
+{
+  "name": "DigiAvatar",
+  "version": "1.1.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.3.1",
+    "@openzeppelin/contracts-upgradeable": "^4.3.0",
+    "@openzeppelin/test-helpers": "^0.5.13",
+    "@openzeppelin/truffle-upgrades": "^1.8.1",
+    "@truffle/hdwallet-provider": "^1.4.3",
+    "chai": "^4.3.4",
+    "dotenv": "^10.0.0",
+    "keccak256": "^1.0.3",
+    "merkletreejs": "^0.2.24",
+    "web3": "^1.5.2"
+  },
+  "devDependencies": {
+    "truffle-plugin-verify": "^0.5.12"
+  }
+}
