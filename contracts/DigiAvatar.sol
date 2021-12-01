@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721Burnab
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -32,36 +33,34 @@ contract DigiAvatar is
 		__Pausable_init_unchained();
 		__ERC721Pausable_init_unchained();
 
-		_pause();
-
-		_publicTokenIdTracker = 50;
+		_publicTokenIdTracker = 74;
 		_ambassadorTokenIdTracker = 0;
 		_baseTokenURI = baseTokenURI;
 
-		publicMintStartTime = 1636984800;		// 2021-11-15 22:00:00  UTC+8
+		publicMintStartTime = 1637330400;		// 2021-11-19 22:00:00  UTC+8
 	}
 
 	using SafeMathUpgradeable for uint256;
+    using StringsUpgradeable for uint256;
 
 	struct attributesStruct {
 		uint8 Origin;
 		uint8 Gender;
-		uint8 Skin;
+		uint8 Race;
 		uint8 Hair;
-		uint8 Eye;
-		uint8 EyeBrow;
-		uint8 Face;
-		uint8 Nose;
-		uint8 Mouth;
+		uint8 Accessory;
+		uint8 Face_Extra;
+		uint8 Body_Extra;
+		uint8 Back_Extra;
 	}
 
 	mapping(uint256 => attributesStruct) private _avatarAttributes;
-	mapping(uint8 => mapping(uint8 => mapping(uint8 => uint8))) private _avatarPartAttributes;
+	mapping(uint8 => mapping(uint8 => mapping(uint8 => uint16))) private _avatarPartAttributes;
 	mapping(uint8 => mapping(uint8 => uint8)) private _avatarPartAttributesLength;
 
 	uint8 constant private ORIGIN = 1;						// Ethereum
-	uint8 constant private ATTRS_COUNT = 7;					// Attributes Count.
-	uint16 constant private MINT_MAX = 1000;
+	uint8 constant private ATTRS_COUNT = 6;					// Attributes Count.
+	uint16 constant private MINT_MAX = 1024;
 	uint256 constant private PRICE = 8 ether / 100;			// 0.08 ETH
 
 	uint256 public publicMintStartTime;
@@ -83,8 +82,8 @@ contract DigiAvatar is
 
 	event WhiteListMerkleRootChanged(bytes32 oldRoot, bytes32 newRoot);
 	event AmbassadorMerkleRootChanged(bytes32 oldRoot, bytes32 newRoot);
-	event WhiteListMintedAmount(address indexed account, uint256 indexed amount);
-	event AmbassadorMintedAmount(address indexed account, uint256 indexed amount);
+	event WhiteListMintedAmount(address indexed account, uint8 indexed amount);
+	event AmbassadorMintedAmount(address indexed account, uint8 indexed amount);
 
 	function _baseURI() internal view virtual override returns (string memory) {
 		return _baseTokenURI;
@@ -94,19 +93,20 @@ contract DigiAvatar is
 		_baseTokenURI = baseTokenURI;
 	}
 
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
+
+        string memory baseURI = _baseURI();
+		string memory extName = ".json";
+        return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, tokenId.toString(), extName)) : "";
+    }
+
 	function pause() public virtual onlyOwner {
 		_pause();
 	}
 
 	function unpause() public virtual onlyOwner {
 		_unpause();
-	}
-
-	// Only develop env.
-	function setStartTime(uint256 _starttime) external onlyOwner {
-		// require(block.chainid != 1, "Only allow non-mainnet calls");
-
-		publicMintStartTime = _starttime;
 	}
 
 	function setWhiteListMerkleRoot(bytes32 root) external onlyOwner {
@@ -121,18 +121,31 @@ contract DigiAvatar is
 		emit AmbassadorMerkleRootChanged(oldRoot, root);
 	}
 
+	function getWhiteListMintAmount() external view returns (uint8) {
+		return _whiteListMintAmount[_msgSender()];
+	}
+
+	function getAmbassadorMintAmount() external view returns (uint8) {
+		return _ambassadorMintAmount[_msgSender()];
+	}
+
 	function fetchSaleFunds() external onlyOwner {
 		payable(_msgSender()).transfer(address(this).balance);
 	}
 
-	function setAvatarAttributesProbsRange(uint8 attr, uint8 gender, uint8[] calldata probsRange) external onlyOwner {
+	function setAvatarAttributesProbsRange(uint8 attr, uint16[] calldata femaleProbsRange, uint16[] calldata maleProbsRange) external onlyOwner {
 		require(attr < ATTRS_COUNT, "Wrong number of attributes");
-		require(gender == 0 || gender == 1, "Gender is 0 or 1");
+
+		_setAttributesProbsRange(attr, 0, femaleProbsRange);
+		_setAttributesProbsRange(attr, 1, maleProbsRange);
+	}
+
+	function _setAttributesProbsRange(uint8 attr, uint8 gender, uint16[] calldata probsRange) internal {
 		require(_avatarPartAttributesLength[attr][gender] == 0, "Attributes already exists");
 
 		require(probsRange.length > 1, "probsRange length needs to be greater than 1");
 		require(probsRange[0] > 0, "probsRange first needs to be greater than 0");
-		require(probsRange[probsRange.length-1] == 100, "probsRange needs to be equal to 100 at the end");
+		require(probsRange[probsRange.length-1] == 10000, "probsRange needs to be equal to 10000 at the end");
 
 		for (uint8 i = 0; i < probsRange.length; i++){
 			if(i > 0){
@@ -167,7 +180,7 @@ contract DigiAvatar is
 		require(ambassadorMintStartTime > 0, "Ambassador Mint has not started");
 		require(block.timestamp < ambassadorMintStartTime.add(ambassadorMintDuration), "Ambassador Mint is over");
 		require(msg.value >= PRICE, "Incorrect price");
-		require(_ambassadorTokenIdTracker < 50, "Exceed max supply");
+		require(_ambassadorTokenIdTracker < 74, "Exceed max supply");
 		require(_ambassadorMintAmount[_msgSender()] == 0, "Each ambassador address holds up to 1");
 		require(!_isContract(_msgSender()), "Caller cannot be contract");
 
@@ -236,13 +249,12 @@ contract DigiAvatar is
 
 		avatarAttributes.Origin = ORIGIN;
 		avatarAttributes.Gender = gender;
-		avatarAttributes.Skin = _randomAvatarAttribute(0, gender, index);
+		avatarAttributes.Race = _randomAvatarAttribute(0, gender, index);
 		avatarAttributes.Hair = _randomAvatarAttribute(1, gender, index);
-		avatarAttributes.Eye = _randomAvatarAttribute(2, gender, index);
-		avatarAttributes.EyeBrow = _randomAvatarAttribute(3, gender, index);
-		avatarAttributes.Face = _randomAvatarAttribute(4, gender, index);
-		avatarAttributes.Nose = _randomAvatarAttribute(5, gender, index);
-		avatarAttributes.Mouth = _randomAvatarAttribute(6, gender, index);
+		avatarAttributes.Accessory = _randomAvatarAttribute(2, gender, index);
+		avatarAttributes.Face_Extra = _randomAvatarAttribute(3, gender, index);
+		avatarAttributes.Body_Extra = _randomAvatarAttribute(4, gender, index);
+		avatarAttributes.Back_Extra = _randomAvatarAttribute(5, gender, index);
 
 		return avatarAttributes;
 	}
@@ -252,19 +264,19 @@ contract DigiAvatar is
 
 		require(attrCount > 0, "Attributes does not exist");
 
-		uint8 rand = _random(100, (attr * 1000 + gender * 100 + index) );
+		uint16 rand = _random(10000, (attr * 1000 + gender * 100 + index) );
 		uint8 attrIndex = _binarySearch(attr, gender, rand);
 
 		return attrIndex;
 	}
 
-	function _random(uint8 range, uint16 seed) internal view returns (uint8) {
-		uint256 randomHash = uint256(keccak256(abi.encodePacked(_msgSender(), block.difficulty, block.timestamp, seed)));
+	function _random(uint16 range, uint16 seed) internal view returns (uint16) {
+		uint256 randomHash = uint256(keccak256(abi.encodePacked(_msgSender(), totalSupply(), block.difficulty, block.timestamp, seed)));
 
-		return uint8(randomHash % range);
+		return uint16(randomHash % range);
 	}
 
-	function _binarySearch(uint8 attr, uint8 gender, uint8 value) internal view returns (uint8) {
+	function _binarySearch(uint8 attr, uint8 gender, uint16 value) internal view returns (uint8) {
 		uint8 n = _avatarPartAttributesLength[attr][gender];
 
 		uint8 left = 0;
